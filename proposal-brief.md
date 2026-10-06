@@ -1,84 +1,62 @@
-# PM Layer Proposal Brief — 2026-10-05
+# PM Fleet Proposal Brief v2 — 2026-10-05
 
-Consolidated build / buy / extend proposal for the git-native, host-agnostic
-project-management layer. Status: research phase, no specs yet.
-Functionality first; dashboards and display come only after the mechanics
-are settled.
+Supersedes proposal-brief.md (v1). Folds in the audit, the V1–V5 verification run, and Protocol Directives v1. Status: research stage. Mechanics and functionality only. No dashboard, display, or UI work. No build specs except the protocol rules. No cost estimate.
 
-## Context
+Sources (all read in full for this revision): v1 = proposal-brief.md; MECH = pm-mechanics-report.md; SOFT = pm-software-report.md; AUD = audit/pm-proposal-audit-2026-10-05.md; EV = evidence/verification-evidence.md (V1–V5, run 2026-10-05); DIR = evidence/protocol-directives-v1.md. Labels: VERIFIED = exercised in EV. DOCUMENTED = primary-source read in AUD, not exercised. DECISION = an operator choice, not a fact. UNKNOWN = no evidence.
 
-- Solo developer, 40+ git repos, AI coding agents do the work, human is the manager.
-- Host-agnostic: GitHub is the main working space, Codeberg holds published repos,
-  GitLab likely later. No layer may assume GitHub remotes everywhere.
-- Doctrine: DVD (Data, Verification, Determinism). Score what you see, kill weak
-  candidates, no padded lists. Never present a claim as verified when it is not.
-- Overlap: the operator's Engram project (agent-memory / fleet-memory system with
-  hash-chained verification receipts, gate packages, auditor approval rounds)
-  covers adjacent territory. Receipt chaining: HIGH overlap. Gates/auditor:
-  PARTIAL. Dolt log / deviation schema: MEDIUM. Working-tree truth: NONE
-  (entirely new PM-layer territory).
+## 1. Frame (standing decisions)
+- Solo operator, 40+ git repos, AI agents do the work, the human manages (v1 Context).
+- PM Fleet stands alone. It is not an Engram project. DECISION: the operator dissolved the seam (AUD D1 resolved as option A). Engram has no work receipts and no hash chain over work (AUD §3), so nothing in PM Fleet depends on Engram. AUD §3's "export closed beads as Engram claims" idea now belongs to Engram, not to PM Fleet.
+- Host layout. DECISION: GitHub is the main working space, Codeberg holds published repos, GitLab comes later. The core must be host-agnostic: no core mechanism may require a GitHub remote. §5 lists every component that is GitHub-only.
+- Stage. DECISION: research. Mechanics first. Dashboards, boards, status pages, and render hooks wait until the mechanics are settled. AUD D4 resolves to "no human board for now". GitHub Projects (SOFT's lead recommendation) was dropped because it is display work.
+- Doctrine. DVD: only verified claims count, and UNKNOWN stays UNKNOWN (v1).
 
-## BUY (adopt as-is, $0)
+## 2. Decided: the stack
+- Beads bd 1.3.1 (pinned) — system of record for work, decisions, and claims in every active repo. EV header; AUD BUY. Upgrade deliberately: 1.3.0 ran ~28 schema migrations in place, and 1.2.1/1.2.2 were an accidental release and a re-ship (AUD, DOCUMENTED).
+- Dolt sync via bd dolt push/pull — canonical cross-machine sync over refs/dolt/data. EV V3b; MECH 5c; AUD (Land the Plane row). Legacy bd sync and the JSONL channel are not used.
+- Native bd leases — claim TTL, heartbeat, and reclaim. EV V2.
+- bd decision type — deviation log (ADR sections enforced). EV V1.
+- isitdone 0.8.2 (pinned) — local Stop-hook gate for honest mistakes. EV V5; AUD BUY. Created 2026-09-07, 16 releases in 20 days, one maintainer (AUD, DOCUMENTED).
+- bd github sync — one-way publication of bead state to GitHub Issues. EV V4; DIR 3.
+- Agent Skills format — delivers DIR to every harness. AUD BUY (KEEP); MECH 4d.
+- Custom: fleet crawler — working-tree truth across repos and worktrees. MECH 3a; AUD BUILD (KEEP). The only build item that is live. See §8.
 
-- Beads (`bd`) in every active repo. Git-native issues, `decision` issue type for
-  drift, `bd ready --json` topo-sorted work selection, atomic claim. MIT, single
-  Go binary, zero infra.
-- isitdone. Zero-LLM Stop hook for 12 agent harnesses. Runs the repo's real
-  test/typecheck/lint on the exact working tree, blocks false "done" claims,
-  detects weakened tests, emits tamper-evident receipts (PASS with tree hash,
-  STALE on further edits, NONE on hand-edit). MIT. Verified live 2026-10-05:
-  repo exists, created 2026-09-07. Caveat: 1 star, 61 commits, ~1 month old.
-  Pin the version.
-- GitHub native merge queue for integration re-verification on GitHub-hosted
-  repos; bors-ng (Apache 2.0, standalone) as the host-agnostic equivalent.
-- in-toto for signed link metadata; SLSA via `actions/attest` + `gh attestation
-  verify` for artifact-to-commit binding. Note: SLSA proves artifact binding,
-  NOT task-done. That confusion is killed.
-- Agent Skills open standard (agentskills.io, Linux Foundation) to distribute one
-  protocol across harnesses.
-- gitvantage for working-tree visibility UI if wanted without building the crawler.
+## 3. Verified results (EV)
+- V1 PASS: bd types lists decision ("Architecture decision record (ADR)"). bd create --validate rejects a decision without ## Decision, ## Rationale, or ## Alternatives Considered. bd lint warns on missing sections. Does not establish: nothing material — plain bd create (no --validate) accepts section-less decisions, so enforcement depends on --validate being used.
+- V2 PASS: --claim sets a lease ("expires in 4 mins" right after claim, ≈5 min TTL; AUD documents 5m default). bd heartbeat refreshes it. bd reclaim --older-than 30s did nothing inside the grace window, reclaimed after it passed. Does not establish: row_lock serialization, owner-only heartbeat, concurrent-claim races, and ephemeral-row claims taking no lease are DOCUMENTED only (AUD EXTEND, CHANGELOG). V2 had one agent and one bead.
+- V3 SPLIT: GitLab over HTTPS + PAT: PASS — push completed, refs/dolt/data confirmed via ls-remote, clean-room git clone + bd bootstrap recovered both beads; PAT was write_repository-only, then scrubbed and revoked. Codeberg over SSH: UNKNOWN — platform egress policy on the verifying machine reset SSH at the handshake; bd and Codeberg were never reached. Does not establish: Codeberg over HTTPS untested; SSH untested on any forge. bd init + bd dolt pull on a fresh clone fails with divergent history — bd bootstrap is the correct path. Missing git identity made bd's commit of .beads/config.yaml fail with exit 128 (push still went through).
+- V4 PASS (semantics mapped): run on a private personal-account GitHub repo. --push-only created issues. Conflicts: prefer-newer (default) lets the newer side win; prefer-local overwrites GitHub; prefer-github lets GitHub win even when the bead is newer. bd close closes the issue; a GitHub reopen does not come back. Unscoped --pull-only does not import foreign issues, but bd github pull <n> does. bd delete leaves the GitHub issue open (orphaned). Does not establish: only titles and open/closed state exercised. Which bead fields get published (description, notes, comments, labels, metadata) UNKNOWN. --push-only vs GitHub-side edits UNKNOWN. Label mapping, rate limits, fleet-scale auth model UNKNOWN (classic PAT via env used).
+- V5 PASS: receipt --json has version: 1 plus binding fields head, branch, tree, treeBefore, dirtyFiles, configHash, checks[] (with output tails), hmac. Key is .isitdone/key (0600, per repo). .isitdone/ gitignored twice. No user-level key. Does not establish: gate passed with 14 dirty files (dirtyFiles: 14, state PASS) — 0.8.2's full profile does not block on uncommitted work. Receipt verifies only on the machine holding the key. Only Claude Code hooks installed; the other 11 harnesses are README claims (AUD).
 
-## EXTEND (OSS base, operator adds the missing piece)
+## 4. Protocol directives (DIR v1, corrected to the evidence)
+DIR's preamble claim "every rule below was verified 2026-10-05" is not accurate: rules 7 and 8 are decisions, parts of 2/4/5 go beyond EV. Corrections marked [corr]. DIR should be re-issued as v1.1 — it is the generation source for the Agent Skills package and per-repo AGENTS.md sections.
+1. Beads are the system of record. GitHub Issues is a read-mostly publication target, not a second database. bd github sync is a bead-led mirror, not true bidirectional sync. (V4)
+2. Canonical sync is bd dolt push / bd dolt pull. bd dolt push adopts the Dolt remote from git origin (V3b). On a fresh machine/clone run bd bootstrap; never bd init followed by bd dolt pull (divergent history, V3b). Incremental bd dolt pull is for already-bootstrapped machines. [corr] DIR's "HTTPS with a token works identically" to SSH is unproven — HTTPS+token verified on GitLab only; SSH untested on every forge; Codeberg untested on both transports. Requirement: every fleet machine needs git user.name/user.email set or bd's config commit fails (V3b exit 128).
+3. GitHub sync is publication-only. Semantics per §3/V4. Close beads instead of deleting them when mirrored (delete orphans the issue). [corr] Plain bd github sync is not publication-only — default prefer-newer imports newer GitHub edits into the bead (V4 "external is newer, importing"). Fix the invocation: bd github sync --push-only, or --prefer-local if a full sync is ever run. Whether --push-only overwrites or skips GitHub-side edits is UNKNOWN (U7). Foreign-issue import is explicit only: bd github pull <n>.
+4. Claim work with native leases: bd update <id> --claim, bd heartbeat <id> from the agent loop, bd reclaim --older-than <dur> from a supervisor timer at ~2× TTL (bd's own help text, V2). No custom lease/heartbeat/reaper. [corr] TTL, heartbeat, reclaim VERIFIED; row_lock serialization DOCUMENTED (AUD, CHANGELOG) but unexercised; concurrent-claim behavior untested. Cross-machine exclusivity holds only after bd dolt push (MECH 4b).
+5. Done means gated; the plane lands with a receipt. isitdone is a local Stop-hook gate — an honest-mistake check, not adversarial evidence: HMAC uses a per-repo local key under gitignored .isitdone/, and an agent that can edit settings can remove the hook (AUD). On close, store the commit SHA plus isitdone receipt --json output on the bead. [corr] DIR claims it catches "uncommitted files" — V5 shows it does not (PASS with 14 dirty files). Land the Plane needs its own clean-tree step: commit first, gate on a clean tree (dirtyFiles: 0), then record SHA + receipt. Whether receipt.tree equals the committed tree of head is UNKNOWN (U10). [corr] A receipt on a bead is a record, not a proof — only the machine holding .isitdone/key can check the HMAC. See §6 for leak paths.
+6. Log deviations as decision beads: "Built X, but the spec said Y" → bd create --type decision --validate, with Decision, Rationale, Alternatives Considered (V1). Link to the originating task with discovered-from (MECH 2b; link type DOCUMENTED, not exercised).
+7. Never publish bead data to a public remote. Pushing Dolt data to a public origin publishes the whole issue database (AUD D3, citing bd CHANGELOG #5068). Dolt remotes point at private remotes only. [corr] DIR's "the GitHub working copy or a private remote" is only safe if the working copy is private — UNKNOWN (U3). The rule is about visibility, not host. DECISION (D3, operator): no bead data on public Codeberg.
+8. No merge queue. DECISION (D2, operator): agents never merge to the same main concurrently — a stated operating constraint, not a verified fact; nothing measured it. If it stops holding, use a host-agnostic "rebase on latest main, re-run the gate, fast-forward" script (AUD D2). No merge-queue machinery.
+Pin hygiene: DIR says run bd metrics off because 1.3.1 prints a metrics notice on first run — EV shows no such notice; unverified on the evidence (U12).
 
-- Beads lease enforcement. The schema carries lease fields; enforcement is custom.
-  Copy the lease_host/lease_pid + `kill -0` proof + `bd reclaim` reaper pattern.
-- Beads "Land the Plane". Prompt-only convention today; isitdone becomes the
-  machine-enforced half.
-- Custom in-toto predicate schema for task-level done receipts. This is the
-  Engram seam: Engram's hash-chained receipts as the chain layer, the PM
-  predicate as the claim content.
-- `bd github sync` for the human board mirror. Exact semantics unverified against
-  primary docs. Verify before relying on it.
-- Gas Town Refinery only if standalone extractability and license resolve;
-  otherwise skip (proportionate choice is the native merge queue / bors-ng).
+## 5. Host-agnostic check
+bd core (issues, leases, decisions): local — host-agnostic. bd dolt push/pull: VERIFIED GitLab (HTTPS+PAT), UNKNOWN Codeberg, not exercised on GitHub — agnostic by design (git remote + custom ref), Codeberg unproven. isitdone local hook: local — host-agnostic. isitdone CI Action: GitHub-only — not adopted (Forgejo/Woodpecker compat UNKNOWN, AUD D5). bd github sync: VERIFIED on GitHub — GitHub-only, acceptable only as publication outside the core. bd gitlab sync: DOCUMENTED (AUD), untested — GitLab-only, deferred with GitLab. Issue mirror for Codeberg/Forgejo: none found (AUD) — gap, no publication path. GitHub merge queue: org/Enterprise-gated (AUD) — killed. bors-ng: deprecated GitHub App — killed. SLSA actions/attest: Enterprise-gated for private repos (AUD) — killed from PM Fleet. Fleet crawler (planned): local git — host-agnostic by construction.
 
-## BUILD (genuinely custom, small)
+## 6. Where bead data and receipts live
+- Dolt history lives under refs/dolt/data on whichever remote bd dolt push targets — by default git origin (V3b: "Adopting Dolt remote origin from git origin").
+- Published repos (public Codeberg): bead data must not reach Codeberg. Options: the GitHub working copy (only if private, U3) or a dedicated private remote. Only private remote verified for Dolt data: GitLab over HTTPS. A private Codeberg repo matters only if Codeberg transport verifies (U1) — not on the critical path for published repos.
+- Default-behavior hazard: a public git origin means bd dolt push publishes by default. Whether sync.remote can point at a non-origin remote is UNKNOWN (U4). Publication-path hazard: git push --mirror (or any all-refs mirror) working copy → Codeberg would carry refs/dolt/* to the public repo; whether that path is all-refs is UNKNOWN (U5). Rule 7 is unenforceable until U3–U5 close.
+- Receipts: .isitdone/ never leaves the machine (V5). A receipt copied onto a bead travels with the bead: to the Dolt remote, and to the GitHub issue if the stored field is mirrored (U6). Receipt contents: branch names, check commands, stdout tails, configHash, HMAC (not the key). DECISION NEEDED (D7): with U6 open, default is full receipt only on unmirrored beads; on mirrored beads store {version, tool, status, head, tree, dirtyFiles, hmac} and drop tails. A private-GitHub-repo mirror carries that repo's exposure.
 
-- Parallel porcelain crawler: `git status --porcelain=v2`, `git stash list`,
-  `git worktree list --porcelain` across every repo and linked worktree,
-  JSONL snapshot. ~200 lines. Note: worktree dirtiness requires per-path status.
-- Poll rules and alerts: aging unlanded work, stale worktrees, upstream movement.
-- Heartbeat plus guarded lease reaper.
-- Bead-to-commit-to-gate-verdict predicate linkage, aligned to Engram receipts.
-- Dolt conflict monitor (same-cell concurrent writes conflict; cross-machine claim
-  races resolve at `bd dolt push/pull`).
-- Deviation and decision conventions plus ADR render hook.
-- Fleet aggregator: `bd list --json` across repos plus crawler snapshot into one
-  status page.
+## 7. Disposition of every v1 item
+Engram overlap map → removed, standalone (AUD §3 LOW/NONE; D1). Beads → kept, pinned 1.3.1 (EV, AUD). isitdone ("tamper-evident", "1 star, 61 commits") → narrowed to honest-mistake local gate; star/commit counts dropped as not reproducible (AUD; EV V5). GitHub merge queue / bors-ng → killed (D2; AUD). in-toto + SLSA → SLSA killed; in-toto predicate dropped (its reason, the Engram seam, is gone); Land the Plane (SHA + receipt) is the whole done-record (AUD; D1). Agent Skills → kept, delivery path for DIR (AUD). gitvantage → killed as component, reference for alert-rule shapes only (AUD: GPL desktop app, dashboard). Beads lease enforcement (EXTEND) + heartbeat/reaper (BUILD) → killed, native (EV V2; AUD). Land the Plane → kept, now machine-checkable record (rule 5) (EV V5). Custom in-toto predicate / bead→commit→verdict linkage → reduced to SHA + receipt on the bead (AUD; D1). bd github sync (UNKNOWN semantics) → resolved as publication-only mirror (rule 3), gaps U6/U7 (EV V4). Gas Town Refinery → killed (MIT but pulls an orchestration stack) (AUD). Porcelain crawler → kept, the next step; size-in-lines figures dropped as underived (v1/MECH/SOFT 100–200 lines not derived) (AUD). Poll rules + alerts → deferred until real crawler snapshots exist (AUD). Dolt conflict monitor → shrunk to "alert when bd conflicts is non-empty after pull"; output format UNKNOWN (U9) (AUD). Deviation conventions → kept (rule 6) (EV V1). ADR render hook → deferred (display) (AUD; stage). Fleet aggregator status page → killed (display); later a data join of bd list --json + crawler JSONL (AUD; stage). "Honest cost: 20–40 h" → deleted, copied verbatim from SOFT Q-C covering a different scope, no derivation, no replacement (AUD). Unknown 1 (hash-ID randomness) → resolved: SHA-256 input includes timestamp.UnixNano() and a nonce (AUD internal/idgen/hash.go). Unknown 2 (Refinery) → moot, killed (AUD). Unknown 3 (github sync semantics) → resolved (V4), residue U6/U7 (EV). Unknown 4 (isitdone schema versioning) → resolved: receipt.version 1; maturity risk stands, stay pinned (EV V5). Unknowns 5–6 (Plane MCP, GitHub remote MCP) → removed, out of scope (AUD).
 
-## Honest cost
+## 8. UNKNOWN (open; none smoothed over)
+U1 Dolt push to Codeberg (SSH or HTTPS) — matters only for private Codeberg repos; re-run V3 from a machine with SSH egress or a Codeberg token over HTTPS. U2 Dolt over SSH on any forge — rule 2's "transport detail" claim; same as U1 or on GitHub/GitLab. U3 Are the GitHub working-copy repos public or private? — decides whether the default Dolt remote breaks rule 7; needs operator answer or a crawler visibility-per-remote field. U4 Can sync.remote target a non-origin remote? — required for any public-origin repo; one disposable-repo test. U5 Does the GitHub→Codeberg publication path push all refs? — a mirror leaks refs/dolt/data to the public repo; inspect mechanism / git ls-remote <codeberg> 'refs/dolt/*' on one published repo. U6 Which bead fields bd github sync publishes — receipt exposure (D7); V4 follow-up with description/notes/comments. U7 --push-only behavior when GitHub side edited — whether publication-only loses/keeps GitHub edits; V4 follow-up. U8 row_lock serialization + concurrent claims under load — rule 4's single-writer assumption; two-agent claim race on one store. U9 bd conflicts output — the shrunk monitor; force a cross-machine conflict and capture output. U10 Does receipt.tree equal the committed tree of head on a clean tree? Does a non-full profile differ on dirty trees? — whether SHA+receipt binds committed state; V5 follow-up. U11 isitdone on the other 11 harnesses; CI re-verification on Codeberg/GitLab — fleet coverage, D5; per-harness doctor, Forgejo/Woodpecker check. U12 The 1.3.1 metrics notice (bd metrics off) — DIR pin-hygiene claim; one fresh bd run with output captured. U13 Auth model for bd github sync at fleet scale — V4 used classic PAT in env; decide token scope/storage. U14 Issue publication for Codeberg repos — no Forgejo mirror known; search or accept none. Personal-vs-org GitHub ownership (AUD) now moot (only mattered for merge queue). Open decisions: D5 local-gate-only vs CI re-verification (recommended: local only for now); D6 crawler fetch policy (decide in crawler spec); D7 receipt exposure on mirrored beads (§6).
 
-20-40 focused hours for the glue: about one weekend each for the fleet aggregator
-and the receipt-gate harness, an afternoon for deviation conventions. A polished
-product is 2-3 months plus a permanent small maintenance tax.
-
-## Explicit unknowns
-
-1. Whether Beads hash IDs include per-creation randomness (determines if the
-   same-content collision mode is real).
-2. Gas Town Refinery standalone extractability and license.
-3. `bd github sync` exact semantics.
-4. isitdone is ~1 month old: pin the version; receipt format has no schema
-   versioning.
-5. Plane MCP server on AGPL Community Edition (from earlier pass).
-6. GitHub remote MCP Projects v2 tools (from earlier pass).
+## 9. Next (linear)
+1. Re-issue DIR as v1.1 with the §4 corrections — it is the generation source; errors spread to every repo.
+2. Spec the fleet crawler: working-tree truth from git status --porcelain=v2 --branch, git stash list, git worktree list --porcelain. Settle: run git status inside each linked worktree (worktree list doesn't show dirtiness, MECH 3a); fetch policy (D6 — without fetch, ahead/behind is stale, AUD); JSONL schema with version field; failure semantics — unreadable repo is unknown, never clean (AUD §5); parallel execution across 40+ repos (MECH 3a mgitstatus pattern — copy the pattern, don't depend on the tool); candidate fields closing U3/U5 mechanically (remote URLs, refs/dolt/* presence per remote — decide in spec whether in scope).
+3. Build the crawler to that spec.
+4. Close the U-items blocking a rule before fleet rollout: rule 7 waits on U3–U5; rule 5's receipt-on-mirror waits on U6/D7.
