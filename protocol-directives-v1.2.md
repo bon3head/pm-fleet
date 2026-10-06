@@ -98,6 +98,7 @@ in publication-safe invocations:
 - `isitdone` runs as a local Stop-hook gate: an honest-mistake check, not
   adversarial evidence. HMAC uses a per-repo local key under gitignored
   `.isitdone/`; an agent that can edit settings can remove the hook.
+  (D5 resolved by operator 2026-10-05: local gate only, no CI re-verification.)
 - isitdone does NOT catch uncommitted files — V5's gate passed with 14 dirty
   files. "Land the Plane" needs its own clean-tree step: commit first, gate
   on a clean tree (dirtyFiles: 0), then record the commit SHA plus
@@ -108,10 +109,9 @@ in publication-safe invocations:
   committed tree on a dirty tree is UNKNOWN.
 - A receipt on a bead is a record, not a proof: only the machine holding
   `.isitdone/key` can check the HMAC.
-- Receipt exposure (DECISION D7, open — but narrowed by U6): since notes do
-  not publish to GitHub, storing the receipt in the bead's NOTES field keeps
-  it out of GitHub Issues entirely. Proposed resolution: receipts go in
-  notes, never in description. Trimmed
+- Receipt exposure (D7, resolved by operator 2026-10-05): since notes do
+  not publish to GitHub, the receipt goes in the bead's NOTES field, never
+  in the description. Trimmed
   {version, tool, status, head, tree, dirtyFiles, hmac} only if a receipt
   must live in a published field.
 
